@@ -16,7 +16,7 @@ const LandingPage = ({ onPlaceOrder }) => {
 
   useEffect(() => {
     setIsVisible(true);
-    
+
     // Auto-slide images
     const interval = setInterval(() => {
       setCurrentImage((prev) => (prev + 1) % heroImages.length);
@@ -25,9 +25,25 @@ const LandingPage = ({ onPlaceOrder }) => {
     return () => clearInterval(interval);
   }, []);
 
+  const [tableNumber, setTableNumber] = useState(null);
+
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const table = urlParams.get("table");
+    setTableNumber(table);
+  }, []);
+
   const handlePlaceOrder = () => {
-    navigate('/counter-screen');
+    if (!tableNumber) {
+      alert(
+        "Table number is required to place an order. Please scan the QR code again."
+      );
+      return;
+    }
+
+    navigate(`/counter-screen?table=${tableNumber}`);
   };
+
 
   const scrollToInfo = () => {
     document.getElementById('info-section').scrollIntoView({ behavior: 'smooth' });
@@ -42,9 +58,8 @@ const LandingPage = ({ onPlaceOrder }) => {
           {heroImages.map((image, index) => (
             <div
               key={index}
-              className={`absolute inset-0 transition-opacity duration-1000 ${
-                index === currentImage ? 'opacity-100' : 'opacity-0'
-              }`}
+              className={`absolute inset-0 transition-opacity duration-1000 ${index === currentImage ? 'opacity-100' : 'opacity-0'
+                }`}
             >
               <img
                 src={image}
@@ -75,9 +90,8 @@ const LandingPage = ({ onPlaceOrder }) => {
         {/* Hero Content */}
         <div className="relative z-10 flex flex-col justify-center items-center h-full text-center px-4">
           <div
-            className={`transform transition-all duration-1000 ${
-              isVisible ? 'translate-y-0 opacity-100' : 'translate-y-10 opacity-0'
-            }`}
+            className={`transform transition-all duration-1000 ${isVisible ? 'translate-y-0 opacity-100' : 'translate-y-10 opacity-0'
+              }`}
           >
             {/* Logo/Brand */}
             <div className="mb-8">
@@ -87,6 +101,11 @@ const LandingPage = ({ onPlaceOrder }) => {
               <h1 className="text-6xl md:text-7xl font-bold text-white mb-4 tracking-tight">
                 Chai Haute
               </h1>
+              {tableNumber && (
+                <h5 className="text-2xl md:text-3xl font-semibold text-yellow-300 mt-2">
+                  Welcome, Table {tableNumber}
+                </h5>
+              )}
               <div className="w-24 h-1 bg-gradient-to-r from-orange-400 to-amber-400 mx-auto mb-6 rounded-full"></div>
               <p className="text-xl md:text-2xl text-orange-100 max-w-2xl mx-auto leading-relaxed">
                 Experience the finest flavors with our authentic cuisine and exceptional service
@@ -135,9 +154,8 @@ const LandingPage = ({ onPlaceOrder }) => {
             <button
               key={index}
               onClick={() => setCurrentImage(index)}
-              className={`w-3 h-3 rounded-full transition-all duration-300 ${
-                index === currentImage ? 'bg-orange-400 scale-125' : 'bg-white bg-opacity-50'
-              }`}
+              className={`w-3 h-3 rounded-full transition-all duration-300 ${index === currentImage ? 'bg-orange-400 scale-125' : 'bg-white bg-opacity-50'
+                }`}
             ></button>
           ))}
         </div>
@@ -150,10 +168,10 @@ const LandingPage = ({ onPlaceOrder }) => {
           <div className="text-center mb-16">
             <h2 className="text-4xl font-bold text-gray-800 mb-6">Order Like You're Already Here</h2>
             <p className="text-xl text-gray-600 max-w-3xl mx-auto mb-12">
-              Skip the wait! Browse our menu, place your order, and pay at the counter when you arrive. 
+              Skip the wait! Browse our menu, place your order, and pay at the counter when you arrive.
               It's dining made simple and seamless.
             </p>
-            
+
             <div className="grid md:grid-cols-3 gap-8 mb-12">
               <div className="group">
                 <div className="bg-white p-8 rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 group-hover:scale-105">
@@ -164,7 +182,7 @@ const LandingPage = ({ onPlaceOrder }) => {
                   <p className="text-gray-600">Explore our delicious offerings and make your selections</p>
                 </div>
               </div>
-              
+
               <div className="group">
                 <div className="bg-white p-8 rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 group-hover:scale-105">
                   <div className="w-16 h-16 bg-gradient-to-br from-orange-400 to-amber-400 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -174,7 +192,7 @@ const LandingPage = ({ onPlaceOrder }) => {
                   <p className="text-gray-600">Add items to your cart and confirm your order</p>
                 </div>
               </div>
-              
+
               <div className="group">
                 <div className="bg-white p-8 rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 group-hover:scale-105">
                   <div className="w-16 h-16 bg-gradient-to-br from-orange-400 to-amber-400 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -209,7 +227,7 @@ const LandingPage = ({ onPlaceOrder }) => {
                       <p className="text-gray-600">685 Stratford Rd, Birmingham B11 4DX, United Kingdom</p>
                     </div>
                   </div>
-                  
+
                   <div className="flex items-center space-x-4">
                     <div className="w-12 h-12 bg-gradient-to-br from-orange-400 to-amber-400 rounded-full flex items-center justify-center">
                       <Phone size={20} className="text-white" />
@@ -219,7 +237,7 @@ const LandingPage = ({ onPlaceOrder }) => {
                       <p className="text-gray-600">+44 121 274 5595</p>
                     </div>
                   </div>
-                  
+
                   <div className="flex items-center space-x-4">
                     <div className="w-12 h-12 bg-gradient-to-br from-orange-400 to-amber-400 rounded-full flex items-center justify-center">
                       <Globe size={20} className="text-white" />
@@ -233,7 +251,7 @@ const LandingPage = ({ onPlaceOrder }) => {
                   </div>
                 </div>
               </div>
-              
+
               <div className="relative">
                 <div className="aspect-square rounded-2xl overflow-hidden shadow-2xl">
                   <img

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Menu, X, ShoppingCart, Trash2 } from 'lucide-react';
-import { FaTags, FaFire , FaMugHot } from "react-icons/fa";
+import { FaTags, FaFire, FaMugHot } from "react-icons/fa";
 
 import Products from '../client/Products';
 import { getIpAddress } from '../../lib/utils/helpers';
@@ -28,6 +28,26 @@ const TabsLayout = () => {
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
     const restaurantName = import.meta.env.VITE_RESTAURANT_NAME;
+
+    // Extract table number from URL
+    const [tableNumber, setTableNumber] = useState(null);
+
+    useEffect(() => {
+        const urlParams = new URLSearchParams(window.location.search);
+        const table = urlParams.get('table');
+
+        if (table) {
+            setTableNumber(table);
+            localStorage.setItem('tableNumber', table);
+        } else {
+            const storedTable = localStorage.getItem('tableNumber');
+            if (storedTable) {
+                setTableNumber(storedTable);
+            } else {
+                window.location.href = '/';
+            }
+        }
+    }, []);
 
     useEffect(() => {
         if (allData && allData.catalogs && allData.catalogs[0]?.data?.categories) {
@@ -100,7 +120,7 @@ const TabsLayout = () => {
         setOpenPopup(false);
         toggleCheckoutFunction(false);
     }
-    
+
     const formattedTotal = new Intl.NumberFormat('en-GB', {
         style: 'currency',
         currency: 'GBP',
@@ -111,8 +131,8 @@ const TabsLayout = () => {
             onClick={onClick}
             className={`
                 w-full px-4 py-3 text-left font-medium rounded-xl transition-all duration-300 transform hover:scale-105
-                ${isActive 
-                    ? 'bg-gradient-to-r from-orange-500 to-orange-600 text-white shadow-lg' 
+                ${isActive
+                    ? 'bg-gradient-to-r from-orange-500 to-orange-600 text-white shadow-lg'
                     : 'bg-white hover:bg-orange-50 text-gray-700 hover:text-orange-600 shadow-sm hover:shadow-md border border-gray-200'
                 }
                 ${className}
@@ -132,9 +152,14 @@ const TabsLayout = () => {
                         <div className="w-8 h-8 bg-gradient-to-br from-orange-500 to-orange-600 rounded-lg flex items-center justify-center">
                             <FaMugHot className="text-white text-sm" />
                         </div>
-                        <span className="text-xl font-bold text-gray-800 truncate max-w-40 sm:max-w-none">
-                            {restaurantName}
-                        </span>
+                        <div className="flex flex-col">
+                            <span className="text-xl font-bold text-gray-800 truncate max-w-40 sm:max-w-none">
+                                {restaurantName}
+                            </span>
+                            <span className="text-lg font-bold text-orange-600">
+                                Table #{tableNumber}
+                            </span>
+                        </div>
                     </Link>
 
                     {/* Mobile Menu Button */}
@@ -159,7 +184,7 @@ const TabsLayout = () => {
 
             {/* Mobile Overlay */}
             {isMobileMenuOpen && (
-                <div 
+                <div
                     className="fixed inset-0 bg-black/50 z-40 lg:hidden"
                     onClick={() => setIsMobileMenuOpen(false)}
                 />
@@ -175,7 +200,7 @@ const TabsLayout = () => {
                     {/* Primary Navigation */}
                     <div className="space-y-3 mb-6">
                         <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">Navigation</h3>
-                        
+
                         <MenuButton
                             onClick={() => handleClick('menu')}
                             isActive={activeTab === 'menu'}
@@ -248,19 +273,27 @@ const TabsLayout = () => {
                             {/* Mobile Layout */}
                             <div className="lg:hidden space-y-3">
                                 <div className="flex items-center justify-between">
-                                    <div>
-                                        <div className="text-sm text-gray-600">
-                                            {totalItems} {totalItems === 1 ? 'item' : 'items'}
+                                    {/* Add table info here */}
+                                    <div className="flex items-center space-x-4">
+                                        <div className="bg-orange-100 px-3 py-1 rounded-lg">
+                                            <span className="text-sm text-orange-600 font-medium">Table </span>
+                                            <span className="font-bold text-lg text-orange-700">#{tableNumber}</span>
                                         </div>
-                                        <div className="font-bold text-lg">{formattedTotal}</div>
+
+                                        <div>
+                                            <div className="text-sm text-gray-600">
+                                                {totalItems} {totalItems === 1 ? 'item' : 'items'}
+                                            </div>
+                                            <div className="font-bold text-lg">{formattedTotal}</div>
+                                        </div>
+                                        <button
+                                            onClick={() => setIsModalOpen(true)}
+                                            className="p-2 rounded-lg bg-gray-100 hover:bg-gray-200 transition-colors"
+                                            disabled={totalItems === 0}
+                                        >
+                                            <Trash2 size={20} className="text-gray-600" />
+                                        </button>
                                     </div>
-                                    <button
-                                        onClick={() => setIsModalOpen(true)}
-                                        className="p-2 rounded-lg bg-gray-100 hover:bg-gray-200 transition-colors"
-                                        disabled={totalItems === 0}
-                                    >
-                                        <Trash2 size={20} className="text-gray-600" />
-                                    </button>
                                 </div>
                                 <button
                                     onClick={() => setOpenPopup(true)}
@@ -283,6 +316,10 @@ const TabsLayout = () => {
                             {/* Desktop Layout */}
                             <div className="hidden lg:flex items-center justify-between">
                                 <div className="flex items-center space-x-6">
+                                    <div className="bg-orange-100 px-4 py-2 rounded-lg">
+                                        <div className="text-sm text-orange-600 font-medium">Table</div>
+                                        <div className="font-bold text-xl text-orange-700">#{tableNumber}</div>
+                                    </div>
                                     <div>
                                         <div className="text-sm text-gray-600">Total</div>
                                         <div className="font-bold text-2xl">{formattedTotal}</div>
@@ -331,11 +368,11 @@ const TabsLayout = () => {
             </div>
 
             {/* Modals */}
-            <CheckoutPopup 
-                open={openPopup} 
-                onClose={handleClosePop} 
-                title="Checkout" 
-                items={<Checkout />} 
+            <CheckoutPopup
+                open={openPopup}
+                onClose={handleClosePop}
+                title="Checkout"
+                items={<Checkout />}
             />
 
             <ConfirmModal

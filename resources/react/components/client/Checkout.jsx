@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useCart } from "react-use-cart";
 import { useSGlobalContext } from "../../lib/contexts/useGlobalContext";
 import { productApi } from "../../lib/services";
@@ -13,6 +13,7 @@ import "react-toastify/dist/ReactToastify.css";
 import { useNavigate } from "react-router-dom";
 import ProductDetails from "./ProductDetails";
 import DealDetails from "./DealDetails.";
+import ReceiptPDFGenerator from './ReceiptPDFGenerator';
 
 const Checkout = () => {
   const { toggleCheckoutFunction, allData } = useSGlobalContext();
@@ -26,6 +27,8 @@ const Checkout = () => {
     emptyCart,
     addItem
   } = useCart();
+
+  // State variables
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
   const [loadings, setLoadings] = useState(false);
   const [showConfirmation, setShowConfirmation] = useState(false);
@@ -37,14 +40,26 @@ const Checkout = () => {
   const [date, setDate] = useState("");
   const [dateTime, setDateTime] = useState("");
   const [branchDetails, setBranchDetails] = useState(null);
-  const navigate = useNavigate();
-
   const [macAddress, setMacAddress] = useState("");
-  
-  // Editing state variables
+  const [tableNumber, setTableNumber] = useState(null);
+  const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
+
+  // Edit functionality state
   const [editingItem, setEditingItem] = useState(null);
   const [showEditModal, setShowEditModal] = useState(false);
 
+  // Refs
+  const navigate = useNavigate();
+  const printRef = useRef(null);
+
+  // Get table number from URL
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const table = urlParams.get('table');
+    setTableNumber(table);
+  }, []);
+
+  // Fetch MAC address
   const fetchMacAddress = async () => {
     try {
       const response = await productApi.getCustomerScreenWebsiteMacAddress();
@@ -60,16 +75,26 @@ const Checkout = () => {
   };
 
   // Fetch branch details
-  const getBranchDetails = async () => {
-    try {
-      const response = await productApi.getBranchDetails();
-      if (response?.data?.length > 0) {
-        setBranchDetails(response.data[0]);
-      }
-    } catch (error) {
-      console.error("Error fetching branch details:", error);
+const getBranchDetails = async () => {
+  try {
+    const response = await productApi.getBranchDetails();
+    console.log("Raw response:", response.data);
+    const branchObj = response?.data?.[0] || response?.data?.["0"];
+
+    if (branchObj) {
+      console.log("Branch details found:", branchObj);
+      setBranchDetails(branchObj);
+      return branchObj;
     }
-  };
+
+    return null;
+  } catch (error) {
+    console.error("Error fetching branch details:", error);
+    return null;
+  }
+};
+
+
 
   useEffect(() => {
     getBranchDetails();
@@ -80,7 +105,7 @@ const Checkout = () => {
     const now = new Date();
     setDay(now.toLocaleString("en-us", { weekday: "long" }));
     setDate(`${now.getMonth() + 1}/${now.getDate()}/${now.getFullYear()}`);
-    setDateTime(`${now.getHours()}:${now.getMinutes()}:${now.getSeconds()}`);
+    setDateTime(`${now.getHours()}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`);
   };
 
   // Edit item functions
@@ -91,8 +116,7 @@ const Checkout = () => {
 
   const handleUpdateItem = (updatedItem) => {
     console.log("Updating item without flickering");
-    
-    // If IDs are the same (no changes made), just update quantity if needed
+
     if (editingItem.id === updatedItem.id) {
       if (editingItem.quantity !== updatedItem.quantity) {
         updateItemQuantity(editingItem.id, updatedItem.quantity);
@@ -102,25 +126,18 @@ const Checkout = () => {
       return;
     }
 
-    // If IDs are different, use a batched approach to prevent race conditions
-    // First, prepare the new item with the same quantity as the old one if not specified
     const itemToAdd = {
       ...updatedItem,
       quantity: updatedItem.quantity || editingItem.quantity
     };
 
-    // Use setTimeout to ensure operations happen in sequence
     setTimeout(() => {
-      // Remove old item
       removeItem(editingItem.id);
-      
-      // Add new item after a brief delay to ensure removal completed
       setTimeout(() => {
         addItem(itemToAdd, itemToAdd.quantity);
       }, 50);
     }, 10);
-    
-    // Close modal immediately for better UX
+
     setShowEditModal(false);
     setEditingItem(null);
   };
@@ -130,64 +147,138 @@ const Checkout = () => {
     setEditingItem(null);
   };
 
+  // Generate PDF receipt
+  const generatePDFReceipt = async (orderData) => {
+  try {
+    setIsGeneratingPDF(true);
+    
+
+    let details = branchDetails;
+    if (!details) {
+      details = await getBranchDetails(); // get latest directly
+    }
+    
+    // Generate PDF using the separate component
+    await ReceiptPDFGenerator.generate(
+      orderData, 
+      details, 
+      tableNumber, 
+      orderData.orderNumber || orderNumber, 
+      dateTime, 
+      day, 
+      date
+    );
+    
+    setIsGeneratingPDF(false);
+    showToast("Receipt PDF downloaded successfully!", "success");
+    return true;
+  } catch (error) {
+    console.error("Error generating PDF:", error);
+    setIsGeneratingPDF(false);
+    showToast("Error generating PDF receipt", "error");
+    return false;
+  }
+};
+
   const handleCheckout = () => {
+    if (!tableNumber) {
+      showToast("Table number is required", "error");
+      return;
+    }
     setShowConfirmation(true);
     setOpenPopup(true);
   };
 
   const confirmCheckout = async () => {
-    setLoadings(true);
-    const screenMacAddress = await fetchMacAddress();
-    console.log("MAC Address for order:", screenMacAddress);
-    
-    let singleItems = [];
-    let mealItems = [];
-    let dealItems = [];
+  setLoadings(true);
+  const screenMacAddress = await fetchMacAddress();
+  console.log("MAC Address for order:", screenMacAddress);
 
-    items.forEach((item) => {
-      if (item.side && item.drink) {
-        mealItems.push(item);
-      } else if (item.deal) {
-        dealItems.push(item);
-      } else {
-        singleItems.push(item);
+  let singleItems = [];
+  let mealItems = [];
+  let dealItems = [];
+
+  items.forEach((item) => {
+    if (item.side && item.drink) {
+      mealItems.push(item);
+    } else if (item.deal) {
+      dealItems.push(item);
+    } else {
+      singleItems.push(item);
+    }
+  });
+
+  const orderData = {
+    cart: {
+      single: singleItems,
+      meal: mealItems,
+      deal: dealItems,
+    },
+    totalBill: cartTotal,
+    payMethod: "cash",
+    payStatus: "pending",
+    tprice: cartTotal,
+    sprice: cartTotal,
+    orderType: selectedOption,
+    macAddress: screenMacAddress || "",
+    tableNumber: tableNumber,
+  };
+
+  try {
+    const response = await productApi.finalizeOrder(orderData);
+    if (response.data) {
+      const newOrderNumber = response.data.order_no;
+      setOrderNumber(newOrderNumber); // Set order number first
+      
+      showToast("Order placed successfully!", "success");
+      setShowSuccessMessage(true);
+
+      // Generate PDF receipt with the new order number
+      await generatePDFReceipt({
+        ...orderData,
+        orderNumber: newOrderNumber // Use the new order number
+      });
+
+      // Auto-close success message and cleanup after 8 seconds
+      setTimeout(() => {
+        handlePostCheckoutCleanup();
+      }, 8000);
+    }
+  } catch (error) {
+    console.error("Checkout error:", error);
+    showToast("Failed to place order", "error");
+  } finally {
+    setLoadings(false);
+  }
+};
+
+  const handlePostCheckoutCleanup = () => {
+    // Clear cart
+    emptyCart();
+
+    // Clear all localStorage except essential data
+    const keysToKeep = ['theme', 'language']; // Add any keys you want to preserve
+    const allKeys = Object.keys(localStorage);
+
+    allKeys.forEach(key => {
+      if (!keysToKeep.includes(key)) {
+        localStorage.removeItem(key);
       }
     });
 
-    const orderData = {
-      cart: {
-        single: singleItems,
-        meal: mealItems,
-        deal: dealItems,
-      },
-      totalBill: cartTotal,
-      payMethod: "cash",
-      payStatus: "pending",
-      tprice: cartTotal,
-      sprice: cartTotal,
-      orderType: selectedOption,
-      macAddress: screenMacAddress || "",
-    };
+    // Hide success message
+    setShowSuccessMessage(false);
 
-    try {
-      const response = await productApi.finalizeOrder(orderData);
-      if (response.data) {
-        setOrderNumber(response.data.order_no);
-        showToast("Order placed successfully!", "success");
-        setShowSuccessMessage(true);
-        
-        setTimeout(() => {
-          toggleCheckoutFunction(false);
-          emptyCart();
-          setShowSuccessMessage(false);
-        }, 8000);
-      }
-    } catch (error) {
-      console.error("Checkout error:", error);
-      showToast("Failed to place order", "error");
-    } finally {
-      setLoadings(false);
-    }
+    // Close checkout
+    toggleCheckoutFunction(false);
+
+    // Navigate back to landing page
+    window.location.href = '/';
+
+    // Clear any remaining toasts
+    toast.dismiss();
+
+    showToast("Redirecting to home page...", "info");
   };
 
   const handleOkClick = () => {
@@ -198,9 +289,18 @@ const Checkout = () => {
 
   if (isEmpty) {
     return (
-      <p className="text-center mt-10 text-xl font-semibold">
-        Your cart is empty
-      </p>
+      <div className="flex flex-col items-center justify-center mt-20">
+        <div className="text-6xl mb-4"></div>
+        <p className="text-center text-xl font-semibold text-gray-600">
+          Your cart is empty
+        </p>
+        <button
+          onClick={() => navigate('/')}
+          className="mt-4 bg-[#D97706] text-white px-6 py-2 rounded-md hover:bg-[#B45309] transition"
+        >
+          Continue Shopping
+        </button>
+      </div>
     );
   }
 
@@ -227,11 +327,11 @@ const Checkout = () => {
 
   return (
     <>
-      {loadings ? (
+      {loadings || isGeneratingPDF ? (
         <div className="screen_loader fixed inset-0 bg-white z-[60] flex flex-col items-center justify-center">
           <Spinner aria-label="Processing order" size="xl" />
           <p className="mt-4 text-lg font-semibold text-gray-700">
-            Processing your order...
+            {isGeneratingPDF ? "Generating PDF receipt..." : "Processing your order..."}
           </p>
         </div>
       ) : (
@@ -242,6 +342,9 @@ const Checkout = () => {
               <div>
                 <h2 className="text-xl font-semibold mb-4 text-gray-400">
                   Your Cart ({totalUniqueItems} items)
+                </h2>
+                <h2 className="text-2xl font-bold mb-4 text-indigo-500 border p-2 rounded-lg shadow">
+                  Table No #{tableNumber}
                 </h2>
                 <ul>
                   {items?.map((item) => (
@@ -274,7 +377,6 @@ const Checkout = () => {
                           )}
                           {item.choices &&
                             item.choices.map((choice) => {
-                              // Grouping choice options by choice_name
                               const groupedChoices = (choice?.choice_options && choice.choice_options.length > 0)
                                 ? choice.choice_options.reduce((acc, option) => {
                                   const name = option?.choice_name;
@@ -284,7 +386,7 @@ const Checkout = () => {
                                   acc[name].push(option.option_name);
                                   return acc;
                                 }, {})
-                                : {};  // Return an empty object if no choices are available
+                                : {};
 
                               return (
                                 <div key={choice.choice_id} className="mb-4">
@@ -350,7 +452,7 @@ const Checkout = () => {
                               onClick={() =>
                                 updateItemQuantity(item.id, item.quantity - 1)
                               }
-                              className="px-2 py-1 bg-gray-200 rounded-l"
+                              className="px-2 py-1 bg-gray-200 rounded-l hover:bg-gray-300 transition"
                             >
                               -
                             </button>
@@ -361,7 +463,7 @@ const Checkout = () => {
                               onClick={() =>
                                 updateItemQuantity(item.id, item.quantity + 1)
                               }
-                              className="px-2 py-1 bg-gray-200 rounded-r"
+                              className="px-2 py-1 bg-gray-200 rounded-r hover:bg-gray-300 transition"
                             >
                               +
                             </button>
@@ -369,14 +471,14 @@ const Checkout = () => {
                           <div className="flex gap-2 mt-2">
                             <button
                               onClick={() => handleEditItem(item)}
-                              className="text-blue-500 hover:bg-blue-100 px-2 py-1 rounded"
+                              className="text-blue-500 hover:bg-blue-100 px-2 py-1 rounded transition"
                               title="Edit Item"
                             >
                               ✏️ Edit
                             </button>
                             <button
                               onClick={() => removeItem(item.id)}
-                              className="text-red-500 hover:bg-red-100 px-2 py-1 rounded"
+                              className="text-red-500 hover:bg-red-100 px-2 py-1 rounded transition"
                             >
                               Remove
                             </button>
@@ -391,6 +493,12 @@ const Checkout = () => {
               <div>
                 <div className="bg-gray-100 p-6 rounded-lg shadow-lg">
                   <h2 className="text-xl font-semibold mb-3">Order Summary</h2>
+                  {tableNumber && (
+                    <div className="flex justify-between mb-3">
+                      <span className="text-gray-600">Table Number:</span>
+                      <span className="font-semibold">#{tableNumber}</span>
+                    </div>
+                  )}
                   <div className="flex justify-between mb-3">
                     <span className="text-gray-600">Subtotal:</span>
                     <span className="font-semibold">£{cartTotal.toFixed(2)}</span>
@@ -401,27 +509,34 @@ const Checkout = () => {
                   </div>
                   <button
                     onClick={handleCheckout}
-                    disabled={loadings}
-                    className={`w-full bg-[#D97706] text-white py-2 rounded-md hover:bg-[#B45309] transition ${
-                      loadings ? "opacity-50 cursor-not-allowed" : ""
-                    }`}
+                    disabled={loadings || !tableNumber}
+                    className={`w-full bg-[#D97706] text-white py-3 rounded-md hover:bg-[#B45309] transition font-semibold ${(loadings || !tableNumber) ? "opacity-50 cursor-not-allowed" : ""
+                      }`}
                   >
                     {loadings ? (
                       <>
                         <Spinner aria-label="Loading" size="sm" />
                         <span className="pl-3">Processing...</span>
                       </>
+                    ) : !tableNumber ? (
+                      "Table Number Required"
                     ) : (
                       "Complete Checkout"
                     )}
                   </button>
+                  {!tableNumber && (
+                    <p className="text-red-500 text-sm mt-2 text-center">
+                      Please scan QR code from your table to continue
+                    </p>
+                  )}
                 </div>
               </div>
             </div>
 
+            {/* Success Message Modal */}
             {showSuccessMessage && (
               <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50">
-                <div className="bg-white p-6 rounded shadow-lg text-center min-w-[450px] animate-fade-in">
+                <div className="bg-white p-6 rounded-lg shadow-lg text-center min-w-[450px] animate-fade-in">
                   <div className="table mx-auto">
                     <img
                       className="rounded-t-lg"
@@ -429,19 +544,25 @@ const Checkout = () => {
                       alt="Order Complete"
                     />
                   </div>
-                  <h2 className="text-2xl font-bold mb-4">Order Complete!</h2>
+                  <h2 className="text-2xl font-bold mb-4 text-green-600">Order Complete!</h2>
                   <p className="text-xl mb-2">Please pay at the counter.</p>
+                  <p className="text-lg mb-2">Table Number: #{tableNumber}</p>
                   <p className="text-3xl font-bold text-[#D97706] mt-4">
                     Order #: {orderNumber}
                   </p>
+                  <div className="mt-4 text-sm text-gray-600">
+                    <p>PDF receipt has been downloaded automatically</p>
+                    <p>Redirecting to home page...</p>
+                  </div>
                 </div>
               </div>
             )}
 
+            {/* Confirmation Modal */}
             {showConfirmation && (
               <CustomPopoup
                 open={openPopup}
-                title="Select Options"
+                title="Confirm Your Order"
                 size="4xl"
                 dismissible={true}
                 onClose={() => {
@@ -449,35 +570,52 @@ const Checkout = () => {
                   setShowConfirmation(false);
                 }}
                 items={
-                  <div className="flex flex-col items-center justify-center z-50 gap-3">
+                  <div className="flex flex-col items-center justify-center z-50 gap-4">
+                    <div className="w-full bg-gray-50 p-4 rounded-lg mb-4">
+                      <h3 className="text-lg font-semibold mb-2">Order Details</h3>
+                      <div className="flex justify-between mb-2">
+                        <span>Table Number:</span>
+                        <span className="font-bold">#{tableNumber}</span>
+                      </div>
+                      <div className="flex justify-between mb-2">
+                        <span>Total Amount:</span>
+                        <span className="font-bold">£{cartTotal.toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between mb-2">
+                        <span>Order Type:</span>
+                        <span className="font-bold">{selectedOption}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Payment:</span>
+                        <span className="font-bold">Pay at Counter</span>
+                      </div>
+                    </div>
+
                     <div className="flex flex-col sm:flex-row gap-3 w-full justify-center">
                       {dataList.map((item, index) => {
-                        const isActive = 
-                          item.type === "orderType" 
+                        const isActive =
+                          item.type === "orderType"
                             ? item.title === "Eat In" && selectedOption === "Eat In" ||
-                              item.title === "Take Away" && selectedOption === "Take Away"
+                            item.title === "Take Away" && selectedOption === "Take Away"
                             : paymentMethod === "PaidAtCounter";
 
                         return (
                           <div
                             key={index}
-                            className={`flex items-center justify-center p-4 h-[120px] sm:h-[150px] w-full sm:w-[150px] border border-gray-300 rounded-lg shadow text-center cursor-pointer transition-all duration-300 ease-in-out ${
-                              isActive ? "bg-[#d97706]" : "bg-white hover:bg-gray-50"
-                            }`}
+                            className={`flex items-center justify-center p-4 h-[120px] sm:h-[150px] w-full sm:w-[150px] border border-gray-300 rounded-lg shadow text-center cursor-pointer transition-all duration-300 ease-in-out ${isActive ? "bg-[#d97706]" : "bg-white hover:bg-gray-50"
+                              }`}
                             onClick={item.handleClick}
                           >
                             <div className="flex items-center justify-center flex-col">
                               <div
-                                className={`text-[30px] sm:text-[40px] mx-auto ${
-                                  isActive ? "text-white" : "text-[#d97706]"
-                                }`}
+                                className={`text-[30px] sm:text-[40px] mx-auto ${isActive ? "text-white" : "text-[#d97706]"
+                                  }`}
                               >
                                 {item.icon}
                               </div>
                               <h2
-                                className={`text-sm sm:text-lg mt-1 ${
-                                  isActive ? "text-white" : "text-black"
-                                }`}
+                                className={`text-sm sm:text-lg mt-1 ${isActive ? "text-white" : "text-black"
+                                  }`}
                               >
                                 {item.title}
                               </h2>
@@ -489,13 +627,16 @@ const Checkout = () => {
 
                     <div className="mt-4 text-center">
                       <p className="text-sm text-gray-600 mb-2">
-                        Selected: {selectedOption} • {paymentMethod === "PaidAtCounter" ? "Pay at Counter" : "Other"}
+                        Selected: {selectedOption} • Pay at Counter
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        PDF receipt will be generated automatically after order confirmation
                       </p>
                     </div>
 
                     <button
                       onClick={handleOkClick}
-                      className="mt-6 bg-[#d97706] text-white px-6 py-3 rounded-lg text-lg sm:text-xl font-bold shadow hover:bg-[#b56255] transition-all duration-300 ease-in-out w-full sm:w-auto"
+                      className="mt-6 bg-[#d97706] text-white px-8 py-3 rounded-lg text-lg sm:text-xl font-bold shadow hover:bg-[#b56255] transition-all duration-300 ease-in-out w-full sm:w-auto"
                     >
                       Confirm Order
                     </button>
@@ -527,7 +668,7 @@ const Checkout = () => {
                           lines: editingItem.originalDeal?.lines || [],
                           quantity: editingItem.quantity
                         }}
-                        allData={editingItem.allData || allData }
+                        allData={editingItem.allData || allData}
                         isEditMode={true}
                         editingItem={editingItem}
                         onUpdateItem={handleUpdateItem}
@@ -546,6 +687,7 @@ const Checkout = () => {
                 </div>
               </div>
             )}
+
           </div>
         </>
       )}

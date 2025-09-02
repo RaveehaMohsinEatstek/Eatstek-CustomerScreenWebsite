@@ -6,10 +6,13 @@ import { useSGlobalContext } from "../../lib/contexts/useGlobalContext";
 import { productApi } from "../../lib/services";
 import ReactPlayer from 'react-player';
 import LandingPage from "../client/LandingPage";
+import TableNumberGuard from "./TableGuard";
 
 
 const MenuPage = lazy(() => import("../../pages/client/Products"));
 const NotFoundPage = lazy(() => import("../../pages/common/NotFoundPage"));
+
+
 
 const PublicRoutes = () => {
     const { getAllDataFunction } = useSGlobalContext();
@@ -31,7 +34,7 @@ const PublicRoutes = () => {
         const resetTimer = () => {
             // Check for loading message in localStorage
             const loadingMessage = localStorage.getItem('loadingMessage');
-            
+
             // Only reset inactivity if there's no loading message
             if (!loadingMessage) {
                 if (isInactive) setIsInactive(false);
@@ -117,13 +120,20 @@ const PublicRoutes = () => {
                     <Routes>
                         {/* Landing page as the root */}
                         <Route path="/" element={<LandingPage />} />
-                        
-                        {/* Routes */}
-                        <Route element={<TabsLayout />}>
-                            <Route path="/counter-screen" element={<MenuPage />} />
-                        </Route>
+
+                        {/* Protected route for counter screen */}
+                        <Route
+                            path="/counter-screen"
+                            element={
+                                <TableNumberGuard>
+                                    <TabsLayout>
+                                        <MenuPage />
+                                    </TabsLayout>
+                                </TableNumberGuard>
+                            }
+                        />
                         <Route path="*" element={<NotFoundPage />} />
-                        
+
                     </Routes>
                 )}
             </Suspense>
